@@ -3,11 +3,9 @@
 ###############################################################################
 # Author: slobo.eth                                                           #
 # Last Updated: August 1, 2024                                                #
-# Description:
-# This script indexes the ENS token contract and stores 
-# the data in a postgres db called voting_power. 
-#
-# Assumptions:
+# Description:                                                                #
+# This script indexes the ENS token contract and stores                       #
+# the data in a postgres db called voting_power.                              #
 ###############################################################################
 
 
@@ -47,7 +45,6 @@ host = os.getenv("DB_HOST")
 port = os.getenv("DB_PORT")
 
 CONNECTION_STRING = f"dbname={dbname} user={user} port={port}"
-print(CONNECTION_STRING)
 
 # CONSTANTS
 CHUNK_SIZE = 100_000
@@ -59,10 +56,9 @@ START_BLOCK = 13_533_418
 
 
 w3 = Web3(Web3.HTTPProvider(HTTP_PROVIDER,request_kwargs={'timeout': 60})) 
-print(w3.is_connected())
+print("RPC Status: ",w3.is_connected())
 
 path = os.path.dirname(os.path.abspath(__file__))
-print(path)
 
 with open(os.path.join(path, f'ens_abi.json')) as f: 
     abi = json.load(f)
