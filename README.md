@@ -23,17 +23,31 @@ ERC-20 token indexer for ENS powering [votingpower.xyz](https://www.votingpower.
    python -m venv .venv
    ```
 3. Install required packages:
+
    ```
    pip install -r requirements.txt
    ```
+
 4. Configure PostgreSQL db in .env
+   ```
+   DB_NAME=
+   DB_USER=
+   DB_HOST=
+   DB_PORT=
+   ```
+
+_Ubutu_
+
+On linux need the libpq required for psycopg2 to build
+
+`sudo apt install libpq-dev`
 
 ## Usage
 
 To run the indexer:
 
 ```
-python indexer.py
+python index.py
 ```
 
 ## Database Schema
