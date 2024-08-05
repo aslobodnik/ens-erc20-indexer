@@ -46,7 +46,7 @@ user = os.getenv("DB_USER")
 host = os.getenv("DB_HOST")
 port = os.getenv("DB_PORT")
 
-CONNECTION_STRING = f"dbname={dbname} user={user} host={host} port={port}"
+CONNECTION_STRING = f"dbname={dbname} user={user} port={port}"
 print(CONNECTION_STRING)
 
 # CONSTANTS
@@ -94,16 +94,30 @@ def get_db_cursor(connection_string=CONNECTION_STRING, autocommit=False, dict_cu
 
 #### FUNCTIONS ####
 def create_db(dbname):
-    with get_db_cursor(autocommit=True) as cur:
-        # Check if the database exists
-        cur.execute("SELECT 1 FROM pg_catalog.pg_database WHERE datname = %s", (dbname,))
-        exists = cur.fetchone()
-        
-        if not exists:
-            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(dbname)))
-            print(f"Database {dbname} created successfully.")
-        else:
-            print(f"Database {dbname} already exists.")
+    # Connect to the default 'postgres' database
+    conn = psycopg2.connect(
+        dbname='postgres',
+        user=user,
+        port=port
+    )
+    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+    
+    try:
+        with conn.cursor() as cur:
+            # Check if the database exists
+            cur.execute("SELECT 1 FROM pg_catalog.pg_database WHERE datname = %s", (dbname,))
+            exists = cur.fetchone()
+            
+            if not exists:
+                # Create the database if it doesn't exist
+                cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(dbname)))
+                print(f"Database {dbname} created successfully.")
+            else:
+                print(f"Database {dbname} already exists.")
+    except psycopg2.Error as e:
+        print(f"An error occurred: {e}")
+    finally:
+        conn.close()
 
 def create_events_table():
     with get_db_cursor() as cur:
