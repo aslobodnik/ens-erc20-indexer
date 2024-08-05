@@ -131,12 +131,6 @@ def create_events_table():
             print("Events table & indexes created successfully.")
 
 
-def execute_queries(query_list):
-    with get_db_cursor() as cur:
-        for query in query_list:
-            print(f"Executing query: {query}")
-            cur.execute(query)
-
 def get_events(from_block, to_block, chunk_size, event="Transfer"):
     """
     Retrieve events in chunks to prevent timeout.
@@ -190,7 +184,6 @@ def insert_events(events, batch_size=1000):
 def execute_queries(query_list):
     with get_db_cursor(dict_cursor=True) as cur:
         for query in query_list:
-            print(f"Executing query: {query}")
             cur.execute(query)
 
 def get_latest_block_number(event):
