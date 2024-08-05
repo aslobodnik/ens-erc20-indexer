@@ -39,14 +39,15 @@ from queries import (
 
 
 # Postgres connection
-
+from dotenv import load_dotenv
+load_dotenv()
 dbname = os.getenv("DB_NAME")
 user = os.getenv("DB_USER")
 host = os.getenv("DB_HOST")
 port = os.getenv("DB_PORT")
 
 CONNECTION_STRING = f"dbname={dbname} user={user} host={host} port={port}"
-
+print(CONNECTION_STRING)
 
 # CONSTANTS
 CHUNK_SIZE = 100_000
