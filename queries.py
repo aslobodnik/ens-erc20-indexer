@@ -13,6 +13,7 @@ CREATE_EVENTS_TABLE = """
         address VARCHAR(42) NOT NULL,
         block_hash VARCHAR(66) NOT NULL,
         block_number BIGINT NOT NULL,
+        block_timestamp BIGINT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (event_type, transaction_hash, log_index)
     );

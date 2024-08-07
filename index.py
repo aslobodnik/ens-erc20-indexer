@@ -14,6 +14,7 @@ from web3 import Web3
 import time
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
@@ -152,6 +153,45 @@ def get_events(from_block, to_block, chunk_size, event="Transfer"):
 
     return all_events
 
+
+def add_missing_block_timestamp():
+    block_numbers = fetch_block_numbers()
+    batch_size = 1000  # Define the size of each batch
+    start_time = time.time()
+
+    # Process each batch in parallel
+    with ThreadPoolExecutor() as executor:
+        for i in range(0, len(block_numbers), batch_size):
+            current_batch = list(block_numbers)[i:i + batch_size]
+            # Fetch timestamps in parallel
+            results = list(executor.map(fetch_timestamp, current_batch))
+
+            update_queries = [result[0] for result in results if result[0]]
+            if update_queries:
+                execute_queries(update_queries)
+
+            # Logging errors
+            errors = [result[1] for result in results if result[1]]
+            for error in errors:
+                print(error)
+
+    end_time = time.time()
+    print(f"Added {len(block_numbers)} timestamps in {end_time - start_time:.2f} seconds")
+    
+def fetch_timestamp(block_number):
+    try:
+        timestamp = w3.eth.get_block(block_number)['timestamp']
+        return (f"UPDATE events SET block_timestamp = {timestamp} WHERE block_number = {block_number}", None)
+    except Exception as e:
+        return (None, f"Failed to fetch timestamp for block number {block_number}: {e}")    
+
+def fetch_block_numbers():
+    fetch_query = "SELECT distinct(block_number) FROM events WHERE block_timestamp IS NULL order by block_number"
+    with get_db_cursor(dict_cursor=True) as cur:
+        cur.execute(fetch_query)
+        block_numbers = [row['block_number'] for row in cur.fetchall()]
+    return block_numbers
+
 def insert_events(events, batch_size=1000):
     insert_query = """
     INSERT INTO events (event_type, args, log_index, transaction_index, transaction_hash, address, block_hash, block_number)
@@ -236,6 +276,11 @@ def update():
         events.extend(get_events(db_block, END_BLOCK, 100_000, event_type))
 
     insert_events(events)
+    start_time = time.time()
+    print("Adding timestamps...")
+    add_missing_block_timestamp()
+    end_time = time.time()
+    print(f"Added timestamps in {end_time - start_time:.2f} seconds")
     print("Refreshing views...")
     start_time = time.time()
     execute_queries([REFRESH_VIEWS])
