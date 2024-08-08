@@ -109,6 +109,7 @@ SELECT DISTINCT ON (delegate_address)
     delegate_address,
     voting_power,
     block_number,
+    block_timestamp,
     log_index,
     last_refreshed
 FROM delegate_power
@@ -123,6 +124,7 @@ SELECT
     (events.args ->> 'delegate')::character varying(42) AS delegate_address,
     (events.args ->> 'newBalance')::numeric(78,0) AS voting_power,
     events.block_number,
+    events.block_timestamp,
     events.log_index,
     CURRENT_TIMESTAMP AS last_refreshed
 FROM
