@@ -63,8 +63,9 @@ python index.py
 | transaction_index      |        | last_refreshed            |
 | transaction_hash       |        +---------------------------+
 | address                |
-| block_hash             |        +---------------------------+
-| block_number           |        | current_delegations       |
+| block_hash             |
+| block_number           |        +---------------------------+
+| block_timestamp        |        | current_delegations       |
 | created_at             |        +---------------------------+
 +------------------------+        | delegator                 |
                                   | delegate                  |
