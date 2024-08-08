@@ -166,6 +166,7 @@ WITH ranked_delegations AS (
         args->>'toDelegate' as delegate,
         args->>'fromDelegate' as prior_delegate,
         e.block_number,
+        e.block_timestamp,
         ROW_NUMBER() OVER (PARTITION BY args->>'delegator' ORDER BY e.block_number DESC) as rn
     FROM 
         events e
@@ -176,7 +177,7 @@ SELECT
     delegator,
     delegate,
     prior_delegate,
-    block_number as last_updated_block
+    block_timestamp as delegated_timestamp
 FROM 
     ranked_delegations
 WHERE 
