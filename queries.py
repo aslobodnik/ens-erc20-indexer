@@ -144,17 +144,23 @@ ON delegate_power (delegate_address, block_number, log_index);"""
 # Delegate Counts Materialized View
 CREATE_DELEGATION_COUNTS_VIEW = f"""
 CREATE MATERIALIZED VIEW delegation_counts AS
-SELECT 
-    ((e.args ->> 'toDelegate'::text))::character varying(42) AS delegate_address,
-    count(DISTINCT ((e.args ->> 'delegator'::text))::character varying(42)) AS total_delegations,
-    count(DISTINCT CASE
-        WHEN tb.balance > '1000000000000000000'::bigint::numeric THEN ((e.args ->> 'delegator'::text))::character varying(42)
-        ELSE NULL::character varying
-    END) AS non_zero_delegations
-FROM events e
- LEFT JOIN token_balances tb ON tb.address::text = ((e.args ->> 'delegator'::text))::character varying(42)::text
-WHERE e.event_type::text = 'DelegateChanged'::text
-GROUP BY (((e.args ->> 'toDelegate'::text))::character varying(42));
+select 
+    e.args->>'toDelegate' as delegate_address,
+    count(distinct e.args->>'delegator') as total_delegations,
+     count(CASE WHEN b.current_balance > 1000000000000000000 THEN 1 ELSE NULL END) as non_zero_delegations
+from 
+    events e 
+left join 
+    current_token_balances b 
+    on b.address = e.args->>'delegator'
+    
+
+where 
+    event_type='DelegateChanged'
+    AND b.current_balance IS NOT NULL
+
+group by 
+    1;
 
 CREATE UNIQUE INDEX idx_delegation_counts_address ON delegation_counts(delegate_address);"""
 
