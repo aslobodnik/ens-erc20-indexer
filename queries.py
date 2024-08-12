@@ -173,7 +173,7 @@ WITH ranked_delegations AS (
         args->>'fromDelegate' as prior_delegate,
         e.block_number,
         e.block_timestamp,
-        ROW_NUMBER() OVER (PARTITION BY args->>'delegator' ORDER BY e.block_number DESC) as rn
+        ROW_NUMBER() OVER (PARTITION BY args->>'delegator' ORDER BY e.block_number DESC, e.log_index desc) as rn
     FROM 
         events e
     WHERE
