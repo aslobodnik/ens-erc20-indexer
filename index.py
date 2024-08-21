@@ -43,8 +43,9 @@ dbname = os.getenv("DB_NAME")
 user = os.getenv("DB_USER")
 host = os.getenv("DB_HOST")
 port = os.getenv("DB_PORT")
+password = os.getenv("DB_PASSWORD")
 
-CONNECTION_STRING = f"dbname={dbname} user={user} port={port}"
+CONNECTION_STRING = f"dbname={dbname} user={user} port={port} host={host} password={password}"
 
 # CONSTANTS
 CHUNK_SIZE = 100_000
