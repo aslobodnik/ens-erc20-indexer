@@ -141,28 +141,6 @@ ON delegate_power (delegate_address, block_number, log_index);"""
 
 
 
-# Delegate Counts Materialized View
-CREATE_DELEGATION_COUNTS_VIEW = f"""
-CREATE MATERIALIZED VIEW delegation_counts AS
-select 
-    e.args->>'toDelegate' as delegate_address,
-    count(distinct e.args->>'delegator') as total_delegations,
-     count(CASE WHEN b.current_balance > 1000000000000000000 THEN 1 ELSE NULL END) as non_zero_delegations
-from 
-    events e 
-left join 
-    current_token_balances b 
-    on b.address = e.args->>'delegator'
-    
-
-where 
-    event_type='DelegateChanged'
-    AND b.current_balance IS NOT NULL
-
-group by 
-    1;
-
-CREATE UNIQUE INDEX idx_delegation_counts_address ON delegation_counts(delegate_address);"""
 
 CREATE_CURRENT_DELEGATIONS_VIEW ="""
 CREATE MATERIALIZED VIEW current_delegations AS
@@ -173,14 +151,19 @@ WITH ranked_delegations AS (
         args->>'fromDelegate' as prior_delegate,
         e.block_number,
         e.block_timestamp,
-        ROW_NUMBER() OVER (PARTITION BY args->>'delegator' ORDER BY e.block_number DESC, e.log_index desc) as rn
+        ROW_NUMBER() OVER (PARTITION BY args->>'delegator' ORDER BY e.block_number DESC, e.log_index desc) as rn,
+        COALESCE(b.current_balance, 0) as delegator_balance
     FROM 
         events e
+    LEFT JOIN
+        current_token_balances b
+        ON b.address = args->>'delegator'
     WHERE
         event_type = 'DelegateChanged'
 )
 SELECT 
     delegator,
+    delegator_balance,
     delegate,
     prior_delegate,
     block_timestamp as delegated_timestamp
@@ -227,7 +210,6 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY token_balances;
 REFRESH MATERIALIZED VIEW CONCURRENTLY current_delegations;
 REFRESH MATERIALIZED VIEW CONCURRENTLY current_token_balances;
 REFRESH MATERIALIZED VIEW CONCURRENTLY delegate_power;
-REFRESH MATERIALIZED VIEW CONCURRENTLY delegation_counts;
 REFRESH MATERIALIZED VIEW CONCURRENTLY current_delegate_power;
 REFRESH MATERIALIZED VIEW CONCURRENTLY top_1000_holders;
 """
