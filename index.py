@@ -51,7 +51,7 @@ CHUNK_SIZE = 100_000
 ENS_CONTRACT = '0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72'
 HTTP_PROVIDER = os.getenv("RPC_ENDPOINT")
 START_BLOCK = 13_533_418
-
+IS_LOCAL = os.getenv("IS_LOCAL") or False
 
 
 
@@ -288,7 +288,8 @@ def update():
 
 
 def main():
-    create_db(dbname)
+    if IS_LOCAL:
+        create_db(dbname)
     create_events_table()
     if check_if_view_exists("token_balances"):
         print("Views already exist. Skipping creation.")
