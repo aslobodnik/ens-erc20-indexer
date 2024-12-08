@@ -152,12 +152,21 @@ WITH ranked_delegations AS (
         e.block_number,
         e.block_timestamp,
         ROW_NUMBER() OVER (PARTITION BY args->>'delegator' ORDER BY e.block_number DESC, e.log_index desc) as rn,
-        COALESCE(b.current_balance, 0) as delegator_balance
+        COALESCE(b.current_balance, 0) as delegator_balance,
+        COALESCE(dp_old.voting_power, 0) as voting_power_30d_ago
     FROM 
         events e
     LEFT JOIN
         current_token_balances b
         ON b.address = args->>'delegator'
+    LEFT JOIN LATERAL (
+        SELECT voting_power
+        FROM delegate_power dp
+        WHERE dp.delegate_address = e.args->>'toDelegate'
+        AND dp.block_timestamp <= (EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - INTERVAL '30 days')))::bigint
+        ORDER BY dp.block_timestamp DESC
+        LIMIT 1
+    ) dp_old ON true
     WHERE
         event_type = 'DelegateChanged'
 )
@@ -166,7 +175,8 @@ SELECT
     delegator_balance,
     delegate,
     prior_delegate,
-    block_timestamp as delegated_timestamp
+    block_timestamp as delegated_timestamp,
+    voting_power_30d_ago
 FROM 
     ranked_delegations
 WHERE 
