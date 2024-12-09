@@ -152,21 +152,12 @@ WITH ranked_delegations AS (
         e.block_number,
         e.block_timestamp,
         ROW_NUMBER() OVER (PARTITION BY args->>'delegator' ORDER BY e.block_number DESC, e.log_index desc) as rn,
-        COALESCE(b.current_balance, 0) as delegator_balance,
-        COALESCE(dp_old.voting_power, 0) as voting_power_30d_ago
+        COALESCE(b.current_balance, 0) as delegator_balance
     FROM 
         events e
     LEFT JOIN
         current_token_balances b
         ON b.address = args->>'delegator'
-    LEFT JOIN LATERAL (
-        SELECT voting_power
-        FROM delegate_power dp
-        WHERE dp.delegate_address = e.args->>'toDelegate'
-        AND dp.block_timestamp <= (EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - INTERVAL '30 days')))::bigint
-        ORDER BY dp.block_timestamp DESC
-        LIMIT 1
-    ) dp_old ON true
     WHERE
         event_type = 'DelegateChanged'
 )
@@ -175,13 +166,11 @@ SELECT
     delegator_balance,
     delegate,
     prior_delegate,
-    block_timestamp as delegated_timestamp,
-    voting_power_30d_ago
+    block_timestamp as delegated_timestamp
 FROM 
     ranked_delegations
 WHERE 
     rn = 1;
-
 CREATE UNIQUE INDEX idx_current_delegations_delegator ON current_delegations(delegator);
 CREATE INDEX idx_current_delegations_delegate ON current_delegations(delegate);
 """
@@ -213,6 +202,40 @@ ORDER BY
 CREATE UNIQUE INDEX idx_current_token_balances_address ON current_token_balances(address);
 
 CREATE INDEX idx_current_token_balances_balance ON current_token_balances(current_balance);
+"""
+
+CREATE_DELEGATE_POWER_TOP_100_VIEW = """
+CREATE MATERIALIZED VIEW top_100_delegates AS
+WITH top_100 AS (
+    SELECT 
+        ROW_NUMBER() OVER (ORDER BY SUM(delegator_balance) DESC) AS rank,
+        delegate AS delegate_address,
+        SUM(delegator_balance) AS voting_power,
+        COUNT(DISTINCT delegator) AS delegations,
+        COUNT(DISTINCT CASE WHEN delegator_balance >= 1000000000000000000 THEN delegator END) AS non_zero_delegations
+    FROM current_delegations
+    GROUP BY delegate
+    ORDER BY SUM(delegator_balance) DESC
+    LIMIT 100
+)
+SELECT 
+    t.rank,
+    t.delegate_address,
+    t.voting_power,
+    dp_30.voting_power AS voting_power_30d_ago,
+    t.delegations,
+    t.non_zero_delegations,
+    (t.voting_power - COALESCE(dp_30.voting_power, 0)) AS power_change_30d
+FROM top_100 t
+LEFT JOIN LATERAL (
+    SELECT dp.voting_power
+    FROM delegate_power dp
+    WHERE dp.delegate_address = t.delegate_address
+      AND dp.block_timestamp <= (EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - INTERVAL '30 days')))::bigint
+    ORDER BY dp.block_timestamp DESC
+    LIMIT 1
+) dp_30 ON TRUE
+ORDER BY t.voting_power DESC;
 """
 
 REFRESH_VIEWS = """
