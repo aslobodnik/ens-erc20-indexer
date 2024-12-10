@@ -236,6 +236,9 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) dp_30 ON TRUE
 ORDER BY t.voting_power DESC;
+-- Create indexes to speed up queries on this view
+CREATE UNIQUE INDEX ON top_100_delegates (rank);
+CREATE INDEX ON top_100_delegates (delegate_address);
 """
 
 REFRESH_VIEWS = """
@@ -245,4 +248,5 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY current_delegations;
 REFRESH MATERIALIZED VIEW CONCURRENTLY delegate_power;
 REFRESH MATERIALIZED VIEW CONCURRENTLY current_delegate_power;
 REFRESH MATERIALIZED VIEW CONCURRENTLY top_1000_holders;
+REFRESH MATERIALIZED VIEW CONCURRENTLY top_100_delegates;
 """
