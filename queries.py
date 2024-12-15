@@ -79,26 +79,51 @@ CREATE INDEX ON token_balances (block_number);
 CREATE_TOKEN_BALANCES_TOP_1000_VIEW = """
 CREATE MATERIALIZED VIEW top_1000_holders AS
 WITH latest_balances AS (
-    SELECT DISTINCT ON (address) 
-        address,
-        balance,
-        block_number
-    FROM token_balances
-    ORDER BY address, block_number DESC
+  SELECT DISTINCT ON (address)
+    tb.address,
+    tb.balance,
+    tb.block_number,
+    (SELECT block_timestamp FROM events WHERE block_number = tb.block_number LIMIT 1) as block_timestamp
+  FROM token_balances tb
+  ORDER BY address, block_number DESC
+),
+balances_with_rank AS (
+  SELECT 
+    address,
+    balance AS current_balance,
+    block_number,
+    block_timestamp,
+    ROW_NUMBER() OVER (ORDER BY balance DESC) AS rank
+  FROM latest_balances
+  WHERE balance > 0
+  ORDER BY balance DESC
+  LIMIT 1000
 )
 SELECT 
-    address,
-    balance,
-    block_number,
-    ROW_NUMBER() OVER (ORDER BY balance DESC) AS rank
-FROM latest_balances
-WHERE balance > 0
-ORDER BY balance DESC
-LIMIT 1000;
+  b.rank,
+  b.address,
+  b.current_balance as balance,
+  COALESCE(old_b.balance, 0) AS balance_30d_ago,
+  b.block_number,
+  b.block_timestamp,
+  (b.current_balance - COALESCE(old_b.balance, 0)) AS balance_change_30d
+FROM balances_with_rank b
+LEFT JOIN LATERAL (
+  SELECT tb.balance
+  FROM token_balances tb
+  JOIN events e ON e.block_number = tb.block_number
+  WHERE tb.address = b.address
+    AND e.block_timestamp <= (EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - INTERVAL '30 days')))::bigint
+  ORDER BY tb.block_number DESC
+  LIMIT 1
+) old_b ON TRUE
+ORDER BY b.current_balance DESC;
 
--- Create indexes to speed up queries on this view
+-- Create indexes
 CREATE UNIQUE INDEX ON top_1000_holders (rank);
 CREATE INDEX ON top_1000_holders (address);
+CREATE INDEX ON top_1000_holders (balance DESC);
+CREATE INDEX ON top_1000_holders (balance_change_30d);
 """
 
 
