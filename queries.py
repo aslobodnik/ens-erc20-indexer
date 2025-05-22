@@ -239,6 +239,7 @@ WITH top_100 AS (
         COUNT(DISTINCT delegator) AS delegations,
         COUNT(DISTINCT CASE WHEN delegator_balance >= 1000000000000000000 THEN delegator END) AS non_zero_delegations
     FROM current_delegations
+    WHERE lower(delegate) != '0x0000000000000000000000000000000000000000'
     GROUP BY delegate
     ORDER BY SUM(delegator_balance) DESC
     LIMIT 100
