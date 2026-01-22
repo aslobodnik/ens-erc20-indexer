@@ -49,7 +49,7 @@ password = os.getenv("DB_PASSWORD")
 CONNECTION_STRING = f"dbname={dbname} user={user} port={port} host={host} password={password}"
 
 # CONSTANTS
-CHUNK_SIZE = 100_000
+CHUNK_SIZE = 10_000
 ENS_CONTRACT = '0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72'
 HTTP_PROVIDER = os.getenv("RPC_ENDPOINT")
 START_BLOCK = 13_533_418
