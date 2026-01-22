@@ -15,6 +15,18 @@ This indexer tracks ENS token (0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72) event
 A Next.js web app that queries this database. **Any schema changes here must be tested against voting-power.**
 
 See `~/voting-power/CLAUDE.md` for:
+
+### ens-governor-indexer (~/ens-governor-indexer)
+Indexes ENS Governor proposals and votes into `ens_governor` database. The voting-power app uses both databases.
+
+See `~/ens-governor-indexer/CLAUDE.md` for:
+- Proposals and votes schema
+- Vote support values (0=Against, 1=For, 2=Abstain)
+- Number of executables per proposal
+
+---
+
+**voting-power CLAUDE.md includes:**
 - API endpoint documentation
 - Frontend structure
 - How each endpoint uses the database
