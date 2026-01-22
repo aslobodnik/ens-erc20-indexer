@@ -268,11 +268,51 @@ CREATE INDEX ON top_100_delegates (delegate_address);
 """
 
 REFRESH_VIEWS = """
-REFRESH MATERIALIZED VIEW CONCURRENTLY token_balances;
-REFRESH MATERIALIZED VIEW CONCURRENTLY current_token_balances;
 REFRESH MATERIALIZED VIEW CONCURRENTLY current_delegations;
 REFRESH MATERIALIZED VIEW CONCURRENTLY delegate_power;
 REFRESH MATERIALIZED VIEW CONCURRENTLY current_delegate_power;
 REFRESH MATERIALIZED VIEW CONCURRENTLY top_1000_holders;
 REFRESH MATERIALIZED VIEW CONCURRENTLY top_100_delegates;
+"""
+
+# Incremental balance update - processes new Transfer events only
+UPDATE_BALANCES_FROM_EVENTS = """
+WITH new_transfers AS (
+    SELECT
+        (args->>'from')::varchar(42) AS from_address,
+        (args->>'to')::varchar(42) AS to_address,
+        (args->>'value')::numeric(78,0) AS value,
+        block_number
+    FROM events
+    WHERE event_type = 'Transfer'
+      AND block_number > %s
+),
+balance_changes AS (
+    SELECT from_address AS address, -value AS change, block_number FROM new_transfers
+    UNION ALL
+    SELECT to_address AS address, value AS change, block_number FROM new_transfers
+),
+aggregated_changes AS (
+    SELECT
+        address,
+        SUM(change) AS total_change,
+        MAX(block_number) AS max_block
+    FROM balance_changes
+    GROUP BY address
+)
+INSERT INTO balances (address, balance, last_updated_block)
+SELECT address, total_change, max_block
+FROM aggregated_changes
+ON CONFLICT (address) DO UPDATE SET
+    balance = balances.balance + EXCLUDED.balance,
+    last_updated_block = EXCLUDED.last_updated_block;
+"""
+
+GET_LAST_PROCESSED_BLOCK = """
+SELECT COALESCE(value, 0) FROM indexer_state WHERE key = 'last_transfer_block';
+"""
+
+UPDATE_LAST_PROCESSED_BLOCK = """
+INSERT INTO indexer_state (key, value) VALUES ('last_transfer_block', %s)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 """

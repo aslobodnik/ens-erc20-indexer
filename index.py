@@ -23,15 +23,18 @@ from psycopg2.extras import execute_batch
 from psycopg2.extras import DictCursor
 from contextlib import contextmanager
 from queries import (
-    CREATE_EVENTS_TABLE, 
+    CREATE_EVENTS_TABLE,
     CREATE_TOKEN_BALANCES_VIEW,
-    CREATE_DELEGATE_POWER_VIEW, 
+    CREATE_DELEGATE_POWER_VIEW,
     CREATE_CURRENT_DELEGATIONS_VIEW,
     CREATE_CURRENT_TOKEN_BALANCE_VIEW,
     CREATE_CURRENT_DELEGATE_POWER_VIEW,
     CREATE_TOKEN_BALANCES_TOP_1000_VIEW,
     CREATE_DELEGATE_POWER_TOP_100_VIEW,
-    REFRESH_VIEWS
+    REFRESH_VIEWS,
+    UPDATE_BALANCES_FROM_EVENTS,
+    GET_LAST_PROCESSED_BLOCK,
+    UPDATE_LAST_PROCESSED_BLOCK
     )
 
 #### CONFIG ####
@@ -223,6 +226,27 @@ def execute_queries(query_list):
         for query in query_list:
             cur.execute(query)
 
+def update_balances_incremental():
+    """Update balances table incrementally from new Transfer events."""
+    with get_db_cursor() as cur:
+        # Get last processed block
+        cur.execute(GET_LAST_PROCESSED_BLOCK)
+        result = cur.fetchone()
+        last_block = result[0] if result else 0
+
+        # Get current max block for Transfer events
+        cur.execute("SELECT COALESCE(MAX(block_number), 0) FROM events WHERE event_type = 'Transfer'")
+        current_max = cur.fetchone()[0]
+
+        if current_max > last_block:
+            print(f"Updating balances from block {last_block} to {current_max}...")
+            cur.execute(UPDATE_BALANCES_FROM_EVENTS, (last_block,))
+            rows_affected = cur.rowcount
+            cur.execute(UPDATE_LAST_PROCESSED_BLOCK, (current_max,))
+            print(f"Updated {rows_affected} address balances.")
+        else:
+            print("No new transfers to process.")
+
 def get_latest_block_number(event):
     query = f"""SELECT 
             block_number 
@@ -282,6 +306,15 @@ def update():
     add_missing_block_timestamp()
     end_time = time.time()
     print(f"Added timestamps in {end_time - start_time:.2f} seconds")
+
+    # Update balances incrementally (fast - only processes new events)
+    print("Updating balances incrementally...")
+    start_time = time.time()
+    update_balances_incremental()
+    end_time = time.time()
+    print(f"Balances updated in {end_time - start_time:.2f} seconds")
+
+    # Refresh remaining materialized views
     print("Refreshing views...")
     start_time = time.time()
     execute_queries([REFRESH_VIEWS])
