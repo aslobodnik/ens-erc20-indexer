@@ -9,8 +9,15 @@ This indexer tracks ENS token (0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72) event
 
 ## Related Projects
 
-### voting-power (aslobodnik/voting-power)
+### voting-power (~/voting-power)
+**GitHub:** `aslobodnik/voting-power`
+
 A Next.js web app that queries this database. **Any schema changes here must be tested against voting-power.**
+
+See `~/voting-power/CLAUDE.md` for:
+- API endpoint documentation
+- Frontend structure
+- How each endpoint uses the database
 
 The voting-power app queries these tables/views:
 - `top_100_delegates` - Top 100 delegates by voting power
