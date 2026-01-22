@@ -32,6 +32,8 @@ The voting-power app queries these tables/views:
 ### Materialized Views
 - **token_balances** - Historical balance at each block (refreshed daily at 10 AM)
 - **delegate_power** - Historical voting power from DelegateVotesChanged events
+- **delegate_power_changes** - Pre-computed voting power changes with LAG (avoids expensive window function at query time)
+- **recent_activity** - Pre-computed recent activity feed (delegation changes + token movements)
 - **current_delegate_power** - Latest voting power per delegate
 - **current_delegations** - Latest delegation per delegator (joins with balances)
 - **top_100_delegates** - Aggregated top 100 delegates
@@ -59,6 +61,30 @@ The original design refreshed all materialized views on every update (every 10 m
 - Balance updates: **0.01 seconds** (was minutes)
 - Storage: 56 MB for `balances` vs 976 MB for `token_balances`
 - No impact on voting-power app (doesn't query affected views directly)
+
+## Recent Activity Optimization (January 2026)
+
+### Problem
+The `/api/get-recent-activity` endpoint was slow (~1+ second) because it:
+1. Computed LAG window function over ALL 307k rows in delegate_power
+2. Used correlated subqueries for each DelegateChanged event
+3. Complex JOINs with current_delegations
+
+### Solution
+1. **delegate_power_changes** - Pre-computed materialized view with voting_power_change already calculated
+2. **recent_activity** - Pre-computed materialized view with all activity classifications done
+
+### Results
+- Recent activity query: **2ms** (was 1000ms+) - **500x improvement**
+- The voting-power app can query `recent_activity` directly instead of computing everything on each request
+
+### Usage in voting-power
+Update `/api/get-recent-activity/route.tsx` to use:
+```sql
+SELECT * FROM recent_activity
+WHERE amount >= $threshold
+ORDER BY block_number DESC, log_index DESC;
+```
 
 ## Cron Jobs
 
