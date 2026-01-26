@@ -49,7 +49,7 @@ host = os.getenv("DB_HOST")
 port = os.getenv("DB_PORT")
 password = os.getenv("DB_PASSWORD")
 
-CONNECTION_STRING = f"dbname={dbname} user={user} port={port} host={host} password={password}"
+CONNECTION_STRING = f"dbname={dbname} user={user} port={port} host={host} password={password} sslmode=require"
 
 # CONSTANTS
 CHUNK_SIZE = 10_000
@@ -99,7 +99,8 @@ def create_db(dbname):
     conn = psycopg2.connect(
         dbname='postgres',
         user=user,
-        port=port
+        port=port,
+        sslmode='require'
     )
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
     
