@@ -382,10 +382,15 @@ delegation_changes AS (
     )) AS amount
   FROM events dc
   CROSS JOIN constants c
-  LEFT JOIN with_change wc_to
-    ON wc_to.delegate_address = dc.args->>'toDelegate'
-    AND wc_to.block_number = dc.block_number
-    AND wc_to.log_index = dc.log_index + 1
+  LEFT JOIN LATERAL (
+    SELECT voting_power_change
+    FROM with_change wc
+    WHERE wc.delegate_address = dc.args->>'toDelegate'
+      AND wc.block_number = dc.block_number
+      AND wc.log_index BETWEEN dc.log_index + 1 AND dc.log_index + 2
+    ORDER BY wc.log_index
+    LIMIT 1
+  ) wc_to ON TRUE
   LEFT JOIN with_change wc_from
     ON wc_from.delegate_address = dc.args->>'fromDelegate'
     AND wc_from.block_number = dc.block_number
@@ -419,11 +424,15 @@ other_activities AS (
     ABS(c.voting_power_change) AS amount
   FROM with_change c
   CROSS JOIN constants const
-  LEFT JOIN events dc_check
-    ON dc_check.event_type = 'DelegateChanged'
-    AND dc_check.block_number = c.block_number
-    AND dc_check.log_index = c.log_index - 1
-    AND (dc_check.args->>'toDelegate' = c.delegate_address OR dc_check.args->>'fromDelegate' = c.delegate_address)
+  LEFT JOIN LATERAL (
+    SELECT event_type
+    FROM events dc_inner
+    WHERE dc_inner.event_type = 'DelegateChanged'
+      AND dc_inner.block_number = c.block_number
+      AND dc_inner.log_index BETWEEN c.log_index - 2 AND c.log_index - 1
+      AND (dc_inner.args->>'toDelegate' = c.delegate_address OR dc_inner.args->>'fromDelegate' = c.delegate_address)
+    LIMIT 1
+  ) dc_check ON TRUE
   LEFT JOIN LATERAL (
     SELECT cd_inner.delegator, cd_inner.delegator_balance
     FROM events t
@@ -443,7 +452,7 @@ other_activities AS (
     AND LOWER(delegator_init.args->>'fromDelegate') = const.zero_address
     AND delegator_init.log_index < c.log_index
   WHERE dc_check.event_type IS NULL
-)
+),
 combined AS (
   SELECT * FROM delegation_changes
   UNION ALL
