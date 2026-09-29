@@ -319,6 +319,94 @@ INSERT INTO indexer_state (key, value) VALUES ('last_transfer_block', %s)
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 """
 
+# ******* SCAN MARKER *******
+# scan_marker = highest block that is fully scanned and finalized.
+# Rows above it are replaced on every run until they finalize.
+
+CREATE_STATE_TABLES = """
+CREATE TABLE IF NOT EXISTS balances (
+    address VARCHAR(42) PRIMARY KEY,
+    balance NUMERIC(78,0) NOT NULL DEFAULT 0,
+    last_updated_block BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_balances_balance ON balances (balance DESC);
+
+CREATE TABLE IF NOT EXISTS indexer_state (
+    key VARCHAR(50) PRIMARY KEY,
+    value BIGINT NOT NULL
+);
+"""
+
+GET_SCAN_MARKER = """
+SELECT value FROM indexer_state WHERE key = 'scan_marker';
+"""
+
+SET_STATE = """
+INSERT INTO indexer_state (key, value) VALUES (%s, %s)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+"""
+
+GET_MAX_STORED_BLOCK = """
+SELECT COALESCE(MAX(block_number), 0) FROM events;
+"""
+
+GET_TRANSFER_ADDRESSES_ABOVE = """
+SELECT args->>'from' FROM events WHERE event_type = 'Transfer' AND block_number > %s
+UNION
+SELECT args->>'to' FROM events WHERE event_type = 'Transfer' AND block_number > %s;
+"""
+
+DELETE_EVENTS_ABOVE = """
+DELETE FROM events WHERE block_number > %s;
+"""
+
+INSERT_EVENTS = """
+INSERT INTO events (event_type, args, log_index, transaction_index, transaction_hash, address, block_hash, block_number, block_timestamp)
+VALUES %s
+"""
+
+# Balance = everything received minus everything sent, straight from events.
+# Writes 0 for an address with no Transfers left.
+RECOMPUTE_BALANCES_FOR_ADDRESSES = """
+INSERT INTO balances (address, balance, last_updated_block)
+SELECT
+    a.address,
+    COALESCE(t_in.total, 0) - COALESCE(t_out.total, 0),
+    COALESCE(GREATEST(t_in.max_block, t_out.max_block), %s)
+FROM unnest(%s::varchar[]) AS a(address)
+LEFT JOIN LATERAL (
+    SELECT SUM((args->>'value')::numeric(78,0)) AS total, MAX(block_number) AS max_block
+    FROM events
+    WHERE event_type = 'Transfer' AND args->>'to' = a.address
+) t_in ON TRUE
+LEFT JOIN LATERAL (
+    SELECT SUM((args->>'value')::numeric(78,0)) AS total, MAX(block_number) AS max_block
+    FROM events
+    WHERE event_type = 'Transfer' AND args->>'from' = a.address
+) t_out ON TRUE
+ON CONFLICT (address) DO UPDATE SET
+    balance = EXCLUDED.balance,
+    last_updated_block = EXCLUDED.last_updated_block;
+"""
+
+REBUILD_ALL_BALANCES = """
+TRUNCATE balances;
+INSERT INTO balances (address, balance, last_updated_block)
+SELECT address, SUM(change), MAX(block_number)
+FROM (
+    SELECT args->>'from' AS address, -(args->>'value')::numeric(78,0) AS change, block_number
+    FROM events WHERE event_type = 'Transfer'
+    UNION ALL
+    SELECT args->>'to' AS address, (args->>'value')::numeric(78,0) AS change, block_number
+    FROM events WHERE event_type = 'Transfer'
+) changes
+GROUP BY address;
+"""
+
+GET_MAX_TRANSFER_BLOCK = """
+SELECT COALESCE(MAX(block_number), 0) FROM events WHERE event_type = 'Transfer';
+"""
+
 # Pre-computed voting power changes (avoids expensive LAG at query time)
 CREATE_DELEGATE_POWER_CHANGES_VIEW = """
 CREATE MATERIALIZED VIEW delegate_power_changes AS
