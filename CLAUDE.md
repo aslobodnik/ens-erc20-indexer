@@ -45,8 +45,8 @@ The voting-power app queries these tables/views:
 
 ### Tables
 - **events** - Raw blockchain events (Transfer, DelegateChanged, DelegateVotesChanged)
-- **balances** - Current token balance per address (incremental updates)
-- **indexer_state** - Tracks last processed block for incremental updates
+- **balances** - Current token balance per address (recomputed from `events` for every address touched in a run)
+- **indexer_state** - `scan_marker` (see below) and `last_transfer_block` (kept current so the pre-marker code could take over again)
 
 ### Materialized Views
 - **token_balances** - Historical balance at each block (refreshed daily at 10 AM)
@@ -60,6 +60,32 @@ The voting-power app queries these tables/views:
 
 ### Views
 - **current_token_balances** - Simple view over `balances` table (was previously a materialized view)
+
+## How a run works (September 2026)
+
+`scan_marker` is the highest block that is fully scanned and finalized. It only moves forward.
+
+1. Read head and finalized. Retry if the load-balanced RPC answers with stale numbers.
+2. Fetch all three event types with one `eth_getLogs` filter from `scan_marker + 1` to `head - 2`.
+3. Read the part about to be locked a second time. Both reads must match.
+4. Fetch block headers for timestamps. Header hash must match the hash on the logs.
+5. One transaction: delete rows above the marker, insert the fresh rows, recompute balances for touched addresses, move the marker.
+6. Refresh the materialized views.
+
+Rows at or below the marker are never touched by a run. Rows above it are replaced every run until they finalize, so reorged blocks fix themselves. A failed run changes nothing and the next run retries.
+
+Before this, the start block per event type was `MAX(block_number) + 1`. `DelegateChanged` is rare, so that scan reached weeks back and hit RPC nodes that had pruned those logs (about 1 in 4 runs failed).
+
+If `events` has rows and `scan_marker` is missing, the run refuses to start. Seed the marker by hand; a wrong marker deletes good rows.
+
+### Tools
+- `verify.py` - compares balances and voting power for about 250 addresses against the chain at the marker block. Exits 1 on any mismatch.
+- `audit.py fetch` / `audit.py diff` - re-downloads the full history into `events_audit`, compares it to `events`, confirms each difference by transaction receipt, writes `audit_report.json`.
+- `repair.py audit_report.json` - applies a report, rebuilds `balances`, refreshes views. Safe to run twice.
+- `tests/` - `pytest tests/` against a database named `voting_power_test`. RPC is faked.
+
+### Deploy
+The box (`fullrange-2`, `~/ens/ens-erc20-indexer`) has no GitHub access. Copy files from a checkout with `rsync`. `update.sh` lives only on the box.
 
 ## Performance Optimizations (January 2026)
 
@@ -108,11 +134,11 @@ ORDER BY block_number DESC, log_index DESC;
 ## Cron Jobs
 
 ```
-# Main indexer (every 10 minutes) - updates events + incremental balances
-*/10 * * * * /home/slobo/ens-erc20-indexer/update.sh
+# Main indexer (every 10 minutes, UTC box)
+5-59/10 * * * * flock -n /tmp/ens-erc20.lock /home/ubuntu/ens/ens-erc20-indexer/update.sh
 
-# Historical balance refresh (daily at 10 AM) - refreshes token_balances
-0 10 * * * /home/slobo/ens-erc20-indexer/refresh_historical.sh
+# Historical balance refresh (daily 14:00 UTC) - refreshes token_balances
+0 14 * * * flock -n /tmp/ens-erc20.lock /home/ubuntu/ens/ens-erc20-indexer/refresh_historical.sh
 ```
 
 ## Files
@@ -122,6 +148,7 @@ ORDER BY block_number DESC, log_index DESC;
 - `update.sh` - Wrapper script for cron
 - `refresh_historical.sh` - Daily historical token_balances refresh
 - `ens_abi.json` - ENS token contract ABI
+- `verify.py`, `audit.py`, `repair.py` - data checks and repair (see above)
 
 ## Database Backup
 
@@ -138,4 +165,4 @@ psql voting_power < ~/voting_power_backup_YYYYMMDD.sql
 - Before making schema changes, back up the database
 - After schema changes, verify voting-power app still works
 - The `token_balances` view can be manually refreshed: `REFRESH MATERIALIZED VIEW CONCURRENTLY token_balances;`
-- Check `indexer_state` table for last processed block: `SELECT * FROM indexer_state;`
+- Check `indexer_state` for the scan marker: `SELECT * FROM indexer_state;`
