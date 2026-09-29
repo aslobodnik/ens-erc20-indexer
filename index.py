@@ -380,7 +380,9 @@ def scan(w3, connection_string=None):
 
         from_block = marker + 1
         target = head - HEAD_BUFFER
-        to_block = min(target, from_block + MAX_BATCH - 1)
+        # batches only split finalized history, so every batch moves the marker
+        batch_end = from_block + MAX_BATCH - 1
+        to_block = batch_end if batch_end < finalized else target
         if to_block < from_block:
             print("Nothing new to scan.")
             return
